@@ -1,0 +1,546 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Gold Scalp AI Pro API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: trading
+    description: Gold trading operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /price:
+    get:
+      operationId: getPrice
+      tags: [trading]
+      summary: Get live XAUUSD price
+      description: Returns the current gold price
+      responses:
+        "200":
+          description: Current price
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceResponse"
+  /signal:
+    get:
+      operationId: getSignal
+      tags: [trading]
+      summary: Get scalp trading signal
+      description: Returns EMA/RSI/MACD scalping signal for XAUUSD with confidence score and tight SL/TP
+      responses:
+        "200":
+          description: Scalp trading signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalResponse"
+  /history:
+    get:
+      operationId: getHistory
+      tags: [trading]
+      summary: Get signal history
+      description: Returns last 50 signals
+      responses:
+        "200":
+          description: Signal history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryResponse"
+  /history/clear:
+    delete:
+      operationId: clearHistory
+      tags: [trading]
+      summary: Clear all signal history
+      description: Permanently deletes all signal records
+      responses:
+        "200":
+          description: All signals deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: integer
+  /history/{id}:
+    delete:
+      operationId: deleteSignal
+      tags: [trading]
+      summary: Delete a signal record
+      description: Permanently deletes a signal from history by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success]
+                properties:
+                  success:
+                    type: boolean
+        "404":
+          description: Signal not found
+  /analytics:
+    get:
+      operationId: getAnalytics
+      tags: [trading]
+      summary: Get performance analytics
+      description: Returns win rate, trade stats, and smart mode status
+      responses:
+        "200":
+          description: Analytics data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsResponse"
+  /analytics/smart-mode:
+    post:
+      operationId: setSmartMode
+      tags: [trading]
+      summary: Toggle Smart Mode
+      description: Enable or disable strict signal filtering
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmartModeRequest"
+      responses:
+        "200":
+          description: Smart mode updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsResponse"
+  /position-size:
+    post:
+      operationId: calculatePositionSize
+      tags: [trading]
+      summary: Calculate lot size
+      description: Calculates position size based on account balance and risk percentage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PositionSizeRequest"
+      responses:
+        "200":
+          description: Position size calculation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PositionSizeResponse"
+        "400":
+          description: Invalid inputs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    PriceResponse:
+      type: object
+      properties:
+        price:
+          type: number
+          description: Current XAUUSD price
+        change:
+          type: number
+          description: Price change from previous close
+        changePercent:
+          type: number
+          description: Price change percentage
+        high24h:
+          type: number
+          description: 24-hour high
+        low24h:
+          type: number
+          description: 24-hour low
+        timestamp:
+          type: string
+          description: ISO timestamp of price data
+      required:
+        - price
+        - change
+        - changePercent
+        - high24h
+        - low24h
+        - timestamp
+    SessionInfo:
+      type: object
+      properties:
+        london:
+          type: boolean
+        newYork:
+          type: boolean
+        asian:
+          type: boolean
+        active:
+          type: string
+      required:
+        - london
+        - newYork
+        - asian
+        - active
+    SignalResponse:
+      type: object
+      properties:
+        signal:
+          type: string
+          enum: [LONG, SHORT, HOLD]
+          description: Scalp trading signal
+        confidence:
+          type: number
+          description: Confidence score 0-100
+        entryPrice:
+          type: number
+          description: Recommended entry price
+        stopLoss:
+          type: number
+          description: Stop loss price
+        takeProfit:
+          type: number
+          description: Take profit price
+        trend:
+          type: string
+          enum: [BULLISH, BEARISH, NEUTRAL]
+          description: Overall market trend
+        reason:
+          type: string
+          description: Human-readable reason for the signal
+        timestamp:
+          type: string
+          description: ISO timestamp of signal generation
+        tradeDuration:
+          type: string
+          description: Expected trade duration e.g. 5-30 minutes
+        cooldownRemaining:
+          type: number
+          description: Seconds remaining in cooldown period
+        smartMode:
+          type: boolean
+          description: Whether Smart Mode is currently active
+        signalStrength:
+          type: string
+          enum: [STRONG, NORMAL]
+          nullable: true
+          description: Signal strength classification
+        spikeCooldownCandles:
+          type: number
+          description: Candles remaining in post-spike cooldown (0 = clear)
+        emaScore:
+          type: number
+          description: EMA crossover score 0-35
+        rsiScore:
+          type: number
+          description: RSI score 0-25
+        macdScore:
+          type: number
+          description: MACD score 0-25
+        momentumScore:
+          type: number
+          description: 1m momentum confirmation score 0-15
+        fvgScore:
+          type: number
+          description: Fair Value Gap entry zone score 0-25
+        sweepScore:
+          type: number
+          description: Liquidity sweep score 0-30
+        session:
+          $ref: "#/components/schemas/SessionInfo"
+        indicators:
+          $ref: "#/components/schemas/Indicators"
+      required:
+        - signal
+        - confidence
+        - entryPrice
+        - stopLoss
+        - takeProfit
+        - trend
+        - reason
+        - timestamp
+        - tradeDuration
+        - cooldownRemaining
+        - smartMode
+        - signalStrength
+        - spikeCooldownCandles
+        - emaScore
+        - rsiScore
+        - macdScore
+        - momentumScore
+        - fvgScore
+        - sweepScore
+        - session
+        - indicators
+    Indicators:
+      type: object
+      properties:
+        rsi:
+          type: number
+          description: RSI 14 on 5m
+        ema9:
+          type: number
+          description: EMA 9 on 5m
+        ema21:
+          type: number
+          description: EMA 21 on 5m
+        macdLine:
+          type: number
+        macdSignal:
+          type: number
+        macdHistogram:
+          type: number
+        atr:
+          type: number
+          description: ATR 14 on 5m
+        trend5m:
+          type: string
+          enum: [BULLISH, BEARISH, NEUTRAL]
+          description: 5m EMA trend
+        trend1m:
+          type: string
+          enum: [BULLISH, BEARISH, NEUTRAL]
+          description: 1m EMA trend (entry confirmation)
+      required:
+        - rsi
+        - ema9
+        - ema21
+        - macdLine
+        - macdSignal
+        - macdHistogram
+        - atr
+        - trend5m
+        - trend1m
+    HistoryResponse:
+      type: object
+      properties:
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryEntry"
+      required:
+        - signals
+    HistoryEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        signal:
+          type: string
+          enum: [LONG, SHORT, HOLD]
+        confidence:
+          type: number
+        entryPrice:
+          type: number
+        stopLoss:
+          type: number
+        takeProfit:
+          type: number
+        trend:
+          type: string
+          enum: [BULLISH, BEARISH, NEUTRAL]
+        reason:
+          type: string
+        timestamp:
+          type: string
+        tradeDuration:
+          type: string
+        tradeStatus:
+          type: string
+          enum: [RUNNING, TARGET_HIT, STOP_HIT, HOLD]
+          description: Trade outcome status
+        closedPrice:
+          type: number
+          description: Price at which trade was closed (TP or SL hit)
+        closedAt:
+          type: string
+          description: ISO timestamp when trade was closed
+        pnlPoints:
+          type: number
+          description: Profit or loss in USD points
+      required:
+        - id
+        - signal
+        - confidence
+        - entryPrice
+        - stopLoss
+        - takeProfit
+        - trend
+        - reason
+        - timestamp
+        - tradeDuration
+        - tradeStatus
+    PositionSizeRequest:
+      type: object
+      properties:
+        balance:
+          type: number
+          description: Account balance in USD
+        riskPercent:
+          type: number
+          description: Risk percentage (e.g., 1 for 1%)
+        stopLossDistance:
+          type: number
+          description: Stop loss distance in USD (price difference)
+      required:
+        - balance
+        - riskPercent
+        - stopLossDistance
+    PositionSizeResponse:
+      type: object
+      properties:
+        lotSize:
+          type: number
+          description: Calculated lot size
+        riskAmount:
+          type: number
+          description: Risk amount in USD
+        positionValue:
+          type: number
+          description: Total position value in USD
+        pipValue:
+          type: number
+          description: Value per pip
+      required:
+        - lotSize
+        - riskAmount
+        - positionValue
+        - pipValue
+    SmartModeRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Enable or disable Smart Mode
+      required:
+        - enabled
+    TradeRecord:
+      type: object
+      properties:
+        id:
+          type: number
+        signal:
+          type: string
+          enum: [LONG, SHORT]
+        result:
+          type: string
+          enum: [WIN, LOSS]
+        entryPrice:
+          type: number
+        closedPrice:
+          type: number
+        pnlPoints:
+          type: number
+        timestamp:
+          type: string
+      required:
+        - id
+        - signal
+        - result
+        - entryPrice
+        - closedPrice
+        - pnlPoints
+        - timestamp
+    AnalyticsResponse:
+      type: object
+      properties:
+        totalCompleted:
+          type: number
+          description: Total completed trades
+        wins:
+          type: number
+        losses:
+          type: number
+        winRate:
+          type: number
+          description: Win rate as a percentage (0-100)
+        lossRate:
+          type: number
+        avgProfit:
+          type: number
+          description: Average profit on winning trades (USD points)
+        avgLoss:
+          type: number
+          description: Average loss on losing trades (USD points)
+        expectancy:
+          type: number
+          description: Expected value per trade
+        last10:
+          type: array
+          items:
+            $ref: "#/components/schemas/TradeRecord"
+        smartMode:
+          type: boolean
+        smartModeStatus:
+          type: string
+        learningStatus:
+          type: string
+        sufficientData:
+          type: boolean
+        streak:
+          type: number
+          description: Current win/loss streak (positive = wins, negative = losses)
+        recentTrend:
+          type: string
+          enum: [HOT, COLD, STABLE, LEARNING]
+      required:
+        - totalCompleted
+        - wins
+        - losses
+        - winRate
+        - lossRate
+        - avgProfit
+        - avgLoss
+        - expectancy
+        - last10
+        - smartMode
+        - smartModeStatus
+        - learningStatus
+        - sufficientData
+        - streak
+        - recentTrend
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message
