@@ -50,7 +50,7 @@ export function ChartWidget() {
   }, []);
 
   return (
-    <Card className="flex flex-col h-full overflow-hidden border-white/5 bg-card/50 backdrop-blur-sm">
+    <Card className="flex flex-col h-full overflow-hidden border-0 lg:border lg:border-white/5 bg-card/50 backdrop-blur-sm rounded-none lg:rounded-xl">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between p-4 border-b border-white/5 bg-black/20 gap-3 flex-wrap">
         <h2 className="font-semibold text-foreground shrink-0">XAUUSD Live Chart</h2>
