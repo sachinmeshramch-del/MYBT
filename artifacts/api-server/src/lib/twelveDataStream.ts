@@ -12,10 +12,20 @@ const RECONNECT_DELAY_MAX  = 120_000;
 let ws: WebSocket | null = null;
 let reconnectDelay = RECONNECT_DELAY_BASE;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let _connected = false;
+let _reconnectCount = 0;
 
 // Exported so Finnhub stream can check staleness
 let _lastTick = 0;
 export function getLastTwelveDataTickMs(): number { return _lastTick; }
+export function getTwelveDataStatus(): { connected: boolean; lastTickMs: number; reconnectCount: number; msSinceLastTick: number } {
+  return {
+    connected: _connected,
+    lastTickMs: _lastTick,
+    reconnectCount: _reconnectCount,
+    msSinceLastTick: _lastTick > 0 ? Date.now() - _lastTick : -1,
+  };
+}
 
 function handleMessage(raw: string) {
   let msg: unknown;
@@ -89,6 +99,7 @@ function connect() {
     logger.info("TwelveData WebSocket connected — subscribing to XAU/USD");
     ws?.send(JSON.stringify({ action: "subscribe", params: { symbols: GOLD_SYMBOL } }));
     reconnectDelay = RECONNECT_DELAY_BASE;
+    _connected = true;
   });
 
   ws.on("message", (data: WebSocket.RawData) => {
@@ -101,6 +112,8 @@ function connect() {
 
   ws.on("close", (code, reason) => {
     logger.warn({ code, reason: reason.toString() }, "TwelveData disconnected — will reconnect");
+    _connected = false;
+    _reconnectCount++;
     scheduleReconnect();
   });
 }

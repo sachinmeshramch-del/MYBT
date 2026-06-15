@@ -1,31 +1,38 @@
-import { Activity, TrendingUp, TrendingDown, Wifi, WifiOff } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, Wifi, WifiOff, AlertTriangle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { usePriceStream } from "@/hooks/usePriceStream";
+import { useApiStatus } from "@/hooks/useApiStatus";
 import { cn } from "@/lib/utils";
 
 function formatNum(n: number, decimals = 2) {
   return n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
-// Split a price into integer part and decimal part for styling
 function splitPrice(price: number) {
   const [int, dec] = price.toFixed(2).split(".");
   return { int: int.replace(/\B(?=(\d{3})+(?!\d))/g, ","), dec };
 }
 
+function formatStaleness(ms: number): string {
+  if (ms < 0) return "no ticks yet";
+  if (ms < 1000) return `${ms}ms ago`;
+  if (ms < 60000) return `${Math.floor(ms / 1000)}s ago`;
+  return `${Math.floor(ms / 60000)}m ago`;
+}
+
 export function Header() {
   const { data, connected, error, transport } = usePriceStream();
+  const { status, ok, alerting } = useApiStatus();
   const [flashClass, setFlashClass] = useState("");
   const prevPriceRef = useRef<number | null>(null);
   const [blinkOn, setBlinkOn] = useState(true);
+  const [showTooltip, setShowTooltip] = useState(false);
 
-  // Blink live dot
   useEffect(() => {
     const id = setInterval(() => setBlinkOn(v => !v), 600);
     return () => clearInterval(id);
   }, []);
 
-  // Flash green/red when price direction changes
   useEffect(() => {
     if (!data) return;
     if (prevPriceRef.current === null) {
@@ -44,10 +51,10 @@ export function Header() {
   }, [data?.price, data?.direction]);
 
   const isUp = (data?.change ?? 0) >= 0;
+  const td = status?.twelvedata;
 
   return (
     <>
-      {/* Flash animation styles */}
       <style>{`
         .flash-up   { animation: flash-green 0.35s ease-out; }
         .flash-down { animation: flash-red   0.35s ease-out; }
@@ -59,6 +66,11 @@ export function Header() {
           0%   { background-color: rgba(239,68,68,0.25); }
           100% { background-color: transparent; }
         }
+        @keyframes pulse-alert {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0.45; }
+        }
+        .pulse-alert { animation: pulse-alert 1.4s ease-in-out infinite; }
       `}</style>
 
       <header className="sticky top-0 z-50 w-full border-b border-white/5 bg-[#0d0f14] backdrop-blur-xl">
@@ -102,8 +114,6 @@ export function Header() {
 
           {/* ── Bid / Ask block ──────────────────────────────────────────── */}
           <div className={cn("flex items-stretch gap-px rounded-xl overflow-hidden border border-white/8 shrink-0", flashClass)}>
-
-            {/* BID */}
             <div className="flex flex-col items-center justify-center bg-[#0a1a0f] px-4 py-2 min-w-[110px]">
               <span className="text-[9px] font-bold tracking-[0.2em] text-green-400/60 uppercase mb-0.5">BID</span>
               {data ? (
@@ -116,7 +126,6 @@ export function Header() {
               )}
             </div>
 
-            {/* Spread */}
             <div className="flex flex-col items-center justify-center bg-[#111318] px-3 py-2">
               <span className="text-[9px] font-bold tracking-[0.15em] text-muted-foreground/60 uppercase mb-0.5">SPREAD</span>
               <span className="text-xs font-mono font-bold text-amber-400">
@@ -124,7 +133,6 @@ export function Header() {
               </span>
             </div>
 
-            {/* ASK */}
             <div className="flex flex-col items-center justify-center bg-[#1a0a0a] px-4 py-2 min-w-[110px]">
               <span className="text-[9px] font-bold tracking-[0.2em] text-red-400/60 uppercase mb-0.5">ASK</span>
               {data ? (
@@ -139,7 +147,7 @@ export function Header() {
           </div>
 
           {/* ── Change + 24H stats ───────────────────────────────────────── */}
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-4">
             {data ? (
               <>
                 <div className="flex flex-col items-end">
@@ -175,6 +183,63 @@ export function Header() {
                 )}
               </div>
             )}
+
+            {/* ── TwelveData Health Badge ──────────────────────────────── */}
+            <div
+              className="relative hidden lg:block"
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
+            >
+              <div
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono font-bold tracking-wider cursor-default select-none transition-colors",
+                  alerting
+                    ? "border-red-500/40 bg-red-500/10 text-red-400 pulse-alert"
+                    : ok
+                      ? "border-emerald-500/25 bg-emerald-500/8 text-emerald-400"
+                      : "border-yellow-500/30 bg-yellow-500/8 text-yellow-400"
+                )}
+              >
+                {alerting
+                  ? <AlertTriangle className="w-3 h-3" />
+                  : <span
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: ok ? "#22c55e" : "#eab308" }}
+                    />
+                }
+                TD {alerting ? "DOWN" : ok ? "OK" : "–"}
+              </div>
+
+              {/* Tooltip */}
+              {showTooltip && (
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-white/10 bg-[#111318] shadow-2xl p-3 z-50 text-[11px] font-mono space-y-2">
+                  <div className="text-muted-foreground/60 uppercase tracking-wider text-[9px] font-bold mb-1">TwelveData Status</div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">WS Connected</span>
+                    <span className={td?.connected ? "text-emerald-400" : "text-red-400"}>
+                      {td?.connected ? "YES" : "NO"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Last Tick</span>
+                    <span className="text-foreground">
+                      {td ? formatStaleness(td.msSinceLastTick) : "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Reconnects</span>
+                    <span className={td && td.reconnectCount > 0 ? "text-yellow-400" : "text-foreground"}>
+                      {td?.reconnectCount ?? "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Active Source</span>
+                    <span className="text-amber-400 uppercase">{status?.activeSource ?? "—"}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
 
         </div>
