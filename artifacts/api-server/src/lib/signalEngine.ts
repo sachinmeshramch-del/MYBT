@@ -486,11 +486,6 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     if (finalSignal !== "HOLD" && inSpikeCooldown) {
       finalSignal = "HOLD";
     }
-    // Asian session guard — gold has very low liquidity 22:00–07:00 UTC
-    if (finalSignal !== "HOLD" && session.asian) {
-      finalSignal = "HOLD";
-    }
-
     // ── SL / TP (ATR-based scalping) ──────────────────────────────────────
     const slDist = Math.min(Math.max(atr * 1.0, 2), 6);
     let stopLoss:   number;
@@ -528,8 +523,6 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     } else if (direction !== "HOLD" && inCooldown) {
       const mLeft = Math.ceil(cooldownRemaining / 60);
       reason = `HOLD – cooldown ${mLeft}m remaining · ${direction} signal (${Math.max(longNorm, shortNorm)}% conf) ready`;
-    } else if (session.asian && direction !== "HOLD") {
-      reason = `HOLD – Asian session (low liquidity) · ${direction} ${Math.max(longNorm, shortNorm)}%`;
     } else {
       const bestDir  = longNorm >= shortNorm ? "LONG" : "SHORT";
       const bestConf = Math.max(longNorm, shortNorm);
