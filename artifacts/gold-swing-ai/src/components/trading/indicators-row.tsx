@@ -96,14 +96,14 @@ export function IndicatorsRow() {
       <div className="flex items-center gap-4 px-1">
         {scores.map(s => (
           <div key={s.label} className="flex items-center gap-1.5 flex-1">
-            <span className="text-[9px] text-muted-foreground/60 font-mono w-8 flex-shrink-0">{s.label}</span>
+            <span className="text-[9px] text-slate-400 font-mono w-8 flex-shrink-0">{s.label}</span>
             <div className="flex-1 bg-white/5 rounded-full h-1 overflow-hidden">
               <div
                 className={`h-1 rounded-full transition-all duration-700 ${s.color}`}
                 style={{ width: `${Math.round((s.score / s.max) * 100)}%` }}
               />
             </div>
-            <span className="text-[9px] text-muted-foreground/60 font-mono w-8 text-right flex-shrink-0">
+            <span className="text-[9px] text-slate-400 font-mono w-8 text-right flex-shrink-0">
               {s.score}/{s.max}
             </span>
           </div>
@@ -115,9 +115,9 @@ export function IndicatorsRow() {
         {statCards.map((stat, i) => (
           <Card key={i} className="bg-black/20 border-white/5 overflow-hidden hover:bg-white/5 transition-colors duration-300">
             <div className="p-4 flex flex-col items-center justify-center text-center h-full">
-              <span className="text-xs text-muted-foreground font-medium mb-0.5">{stat.label}</span>
+              <span className="text-xs text-slate-300 font-medium mb-0.5">{stat.label}</span>
               {stat.sublabel && (
-                <span className="text-[10px] text-muted-foreground/50 mb-1 font-mono">{stat.sublabel}</span>
+                <span className="text-[10px] text-slate-400 mb-1 font-mono">{stat.sublabel}</span>
               )}
               <span className={`text-sm font-bold font-mono tracking-tight ${stat.color}`}>
                 {stat.value}
