@@ -186,55 +186,71 @@ export function Header() {
 
             {/* ── TwelveData Health Badge ──────────────────────────────── */}
             <div
-              className="relative hidden lg:block"
+              className="relative shrink-0"
               onMouseEnter={() => setShowTooltip(true)}
               onMouseLeave={() => setShowTooltip(false)}
             >
               <div
                 className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono font-bold tracking-wider cursor-default select-none transition-colors",
+                  "flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 cursor-default select-none transition-all",
                   alerting
-                    ? "border-red-500/40 bg-red-500/10 text-red-400 pulse-alert"
+                    ? "border-red-500 bg-red-500/15 shadow-lg shadow-red-500/30 pulse-alert"
                     : ok
-                      ? "border-emerald-500/25 bg-emerald-500/8 text-emerald-400"
-                      : "border-yellow-500/30 bg-yellow-500/8 text-yellow-400"
+                      ? "border-emerald-500/70 bg-emerald-500/15 shadow-lg shadow-emerald-500/20"
+                      : "border-yellow-500/60 bg-yellow-500/12 shadow-lg shadow-yellow-500/20"
                 )}
               >
-                {alerting
-                  ? <AlertTriangle className="w-3 h-3" />
-                  : <span
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: ok ? "#22c55e" : "#eab308" }}
-                    />
-                }
-                TD {alerting ? "DOWN" : ok ? "OK" : "–"}
+                {alerting ? (
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                ) : (
+                  <span
+                    className={cn("w-2.5 h-2.5 rounded-full shrink-0", ok && "animate-pulse")}
+                    style={{ backgroundColor: ok ? "#22c55e" : "#eab308" }}
+                  />
+                )}
+                <div className="flex flex-col leading-none">
+                  <span className={cn(
+                    "text-[11px] font-black tracking-widest uppercase",
+                    alerting ? "text-red-400" : ok ? "text-emerald-400" : "text-yellow-400"
+                  )}>
+                    TwelveData
+                  </span>
+                  <span className={cn(
+                    "text-[13px] font-black tracking-wide font-mono mt-0.5",
+                    alerting ? "text-red-300" : ok ? "text-white" : "text-yellow-300"
+                  )}>
+                    {alerting ? "⚠ DISCONNECTED" : ok ? "● CONNECTED" : "CHECKING…"}
+                  </span>
+                </div>
               </div>
 
               {/* Tooltip */}
               {showTooltip && (
-                <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-white/10 bg-[#111318] shadow-2xl p-3 z-50 text-[11px] font-mono space-y-2">
-                  <div className="text-muted-foreground/60 uppercase tracking-wider text-[9px] font-bold mb-1">TwelveData Status</div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">WS Connected</span>
-                    <span className={td?.connected ? "text-emerald-400" : "text-red-400"}>
-                      {td?.connected ? "YES" : "NO"}
+                <div className="absolute right-0 top-full mt-2 w-60 rounded-xl border border-white/10 bg-[#111318] shadow-2xl p-4 z-50 text-[11px] font-mono space-y-2.5">
+                  <div className="text-muted-foreground/60 uppercase tracking-wider text-[9px] font-bold border-b border-white/8 pb-2">
+                    TwelveData WS Status
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Connection</span>
+                    <span className={cn("font-bold", td?.connected ? "text-emerald-400" : "text-red-400")}>
+                      {td?.connected ? "● LIVE" : "✕ DOWN"}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Last Tick</span>
-                    <span className="text-foreground">
+                    <span className="text-foreground tabular-nums">
                       {td ? formatStaleness(td.msSinceLastTick) : "—"}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Reconnects</span>
-                    <span className={td && td.reconnectCount > 0 ? "text-yellow-400" : "text-foreground"}>
+                    <span className={cn("font-bold", td && td.reconnectCount > 0 ? "text-yellow-400" : "text-emerald-400")}>
                       {td?.reconnectCount ?? "—"}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Active Source</span>
-                    <span className="text-amber-400 uppercase">{status?.activeSource ?? "—"}</span>
+                    <span className="text-amber-400 uppercase font-bold">{status?.activeSource ?? "—"}</span>
                   </div>
                 </div>
               )}
