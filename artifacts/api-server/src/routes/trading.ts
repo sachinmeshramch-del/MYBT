@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { fetchGoldPrice } from "../lib/goldPrice.js";
-import { generateSignal, initSignalCooldown } from "../lib/signalEngine.js";
+import { generateSignal, initSignalCooldown, isSignalPersisted, markSignalPersisted } from "../lib/signalEngine.js";
 import { startTradeTracker } from "../lib/tradeTracker.js";
 import { getAnalyticsSummary, setSmartMode } from "../lib/performanceAnalytics.js";
 import { priceEmitter, getLatestPrice, type LivePrice } from "../lib/priceEvents.js";
@@ -79,7 +79,10 @@ router.get("/signal", async (req, res) => {
     const price = live?.price ?? (await fetchGoldPrice()).price;
     const signal = await generateSignal(price);
 
-    if (signal.signal !== "HOLD") {
+    // Only persist when this is a genuinely new signal (not a cached repeat).
+    // isSignalPersisted() returns true after the first insert in this cache window,
+    // preventing the same signal being written multiple times on repeated poll calls.
+    if (signal.signal !== "HOLD" && !isSignalPersisted()) {
       try {
         await db.insert(signalsTable).values({
           signal:        signal.signal,
@@ -91,6 +94,7 @@ router.get("/signal", async (req, res) => {
           reason:        signal.reason,
           tradeDuration: signal.tradeDuration,
         });
+        markSignalPersisted(); // prevent re-insertion for this cache window
       } catch (dbErr) {
         req.log.warn({ dbErr }, "Failed to persist signal to DB");
       }

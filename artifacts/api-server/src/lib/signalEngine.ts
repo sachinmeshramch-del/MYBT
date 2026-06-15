@@ -77,6 +77,12 @@ export interface FVGZone {
 let lastSignalState: LastSignalState | null = null;
 let cachedSignal:    SignalResult | null = null;
 let lastSignalTime = 0;
+let _signalPersisted = false;
+
+/** Returns true if the current cached signal has already been written to the DB. */
+export function isSignalPersisted(): boolean { return _signalPersisted; }
+/** Called by the route layer after a successful DB insert. */
+export function markSignalPersisted(): void  { _signalPersisted = true; }
 
 // ── Post-spike cooldown state ─────────────────────────────────────────────
 let spikeDetectedAt = 0;
@@ -265,8 +271,14 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
       fetchOHLC("1m"),
     ]);
 
-    const closes5m = candles5m.map(c => c.close);
-    const closes1m = candles1m.map(c => c.close);
+    // Use only CLOSED candles for indicator math — the last candle is still
+    // forming and its close changes every tick, causing phantom signals.
+    // We keep the full array for spike detection (which explicitly checks both).
+    const closedCandles5m = candles5m.slice(0, -1);
+    const closedCandles1m = candles1m.slice(0, -1);
+
+    const closes5m = closedCandles5m.map(c => c.close);
+    const closes1m = closedCandles1m.map(c => c.close);
 
     // ── EMAs on 5m ────────────────────────────────────────────────────────
     const ema9_5m  = calcEMA(closes5m, 9);
@@ -368,11 +380,11 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     const trend1m  = detectTrend(ema9_1m, ema21_1m);
     const trend5m  = detectTrend(ema9_5m, ema21_5m);
 
-    // ── FVG Detection (5m candles) ────────────────────────────────────────
-    const fvgZones  = detectFVGZones(candles5m);
+    // ── FVG Detection (closed 5m candles only) ───────────────────────────
+    const fvgZones  = detectFVGZones(closedCandles5m);
 
-    // ── Liquidity Sweep Detection (5m candles) ────────────────────────────
-    const sweepDir  = detectLiquiditySweep(candles5m);
+    // ── Liquidity Sweep Detection (closed 5m candles only) ───────────────
+    const sweepDir  = detectLiquiditySweep(closedCandles5m);
 
     // ── Scoring Engine ────────────────────────────────────────────────────
     // LONG scores
@@ -564,6 +576,7 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     };
 
     cachedSignal = result;
+    _signalPersisted = false; // reset so the route layer persists this new signal exactly once
     return result;
 
   } catch (err) {
