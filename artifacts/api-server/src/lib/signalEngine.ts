@@ -61,6 +61,7 @@ interface LastSignalState {
 }
 
 export interface OHLCCandle {
+  time?: number; // Unix seconds — used to detect duplicate spike candles
   open:  number;
   high:  number;
   low:   number;
@@ -79,6 +80,7 @@ let lastSignalTime = 0;
 
 // ── Post-spike cooldown state ─────────────────────────────────────────────
 let spikeDetectedAt = 0;
+let lastSpikeCandleTime = 0; // tracks which candle triggered the spike to avoid re-triggering on the same candle
 const SPIKE_ATR_MULT       = 1.5;   // body must exceed ATR × this
 const SPIKE_COOLDOWN_COUNT = 2;     // candles to block after a spike
 const CANDLE_5M_MS         = 300_000; // 5 min in ms
@@ -332,11 +334,23 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
         "Spike check"
       );
       if (spikeDetected) {
-        spikeDetectedAt = now;
-        logger.warn(
-          { body: +body.toFixed(2), atr: +atr.toFixed(2), threshold: +spikeThreshold.toFixed(2), blockingMinutes: 10 },
-          "SPIKE COOLDOWN ACTIVATED — Blocking signals for 10 minutes"
-        );
+        const candleTime = candle.time ?? 0;
+        if (candleTime !== lastSpikeCandleTime) {
+          // Genuinely new spike candle — start a fresh cooldown window
+          spikeDetectedAt     = now;
+          lastSpikeCandleTime = candleTime;
+          cachedSignal        = null; // discard pre-spike cached signal
+          logger.warn(
+            { body: +body.toFixed(2), atr: +atr.toFixed(2), threshold: +spikeThreshold.toFixed(2), blockingMinutes: 10, candleTime },
+            "SPIKE COOLDOWN ACTIVATED — Blocking signals for 10 minutes"
+          );
+        } else {
+          // Same candle is still in the OHLC window — do NOT reset the timer
+          logger.info(
+            { candleTime, remainingMs: (SPIKE_COOLDOWN_COUNT * CANDLE_5M_MS) - (now - spikeDetectedAt) },
+            "[SpikeGuard] Same spike candle re-detected — cooldown timer preserved, NOT reset"
+          );
+        }
         break; // one spike is enough to activate cooldown
       }
     }

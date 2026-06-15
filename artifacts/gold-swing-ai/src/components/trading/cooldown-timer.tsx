@@ -9,14 +9,12 @@ export function CooldownTimer({ initialSeconds }: { initialSeconds: number }) {
   }, [initialSeconds]);
 
   useEffect(() => {
-    if (seconds <= 0) return;
-    
-    const interval = setInterval(() => {
+    if (initialSeconds <= 0) return;
+    const id = setInterval(() => {
       setSeconds((s) => Math.max(0, s - 1));
     }, 1000);
-    
-    return () => clearInterval(interval);
-  }, [seconds]);
+    return () => clearInterval(id);
+  }, [initialSeconds]);
 
   if (seconds <= 0) return null;
 

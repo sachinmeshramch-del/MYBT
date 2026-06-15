@@ -9,11 +9,11 @@ import { formatInTimeZone } from "date-fns-tz";
 import { formatPrice } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const IST = "Asia/Kolkata";
+const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-function toIST12(ts: string) {
+function toLocalTime(ts: string) {
   try {
-    return formatInTimeZone(new Date(ts), IST, "dd MMM, hh:mm a");
+    return formatInTimeZone(new Date(ts), LOCAL_TZ, "dd MMM, hh:mm a");
   } catch {
     return "—";
   }
@@ -238,7 +238,7 @@ export function HistoryTable() {
                   return (
                     <tr key={row.id} className="hover:bg-white/5 transition-colors group">
                       <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap font-mono">
-                        {toIST12(row.timestamp)}
+                        {toLocalTime(row.timestamp)}
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={

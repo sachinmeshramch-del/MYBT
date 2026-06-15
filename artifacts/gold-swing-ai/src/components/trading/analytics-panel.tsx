@@ -67,7 +67,7 @@ export function AnalyticsPanel() {
 
   const streak     = data?.streak ?? 0;
   const streakAbs  = Math.abs(streak);
-  const recentTrend = (data as any)?.recentTrend ?? "LEARNING";
+  const recentTrend = data?.recentTrend ?? "LEARNING";
 
   const TrendIcon =
     recentTrend === "HOT"    ? Flame     :

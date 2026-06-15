@@ -21,6 +21,8 @@ export function IndicatorsRow() {
 
   const { indicators, emaScore, rsiScore, macdScore, momentumScore } = signalData;
 
+  if (!indicators) return null;
+
   const trendColor = (t: string) =>
     t === "BULLISH" ? "text-success" : t === "BEARISH" ? "text-destructive" : "text-muted-foreground";
 
