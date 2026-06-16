@@ -1,14 +1,22 @@
 import { useEffect, useState, useRef } from "react";
 
-export interface TwelveDataStatus {
+export interface SourceStatus {
   connected: boolean;
+  hasApiKey: boolean;
   lastTickMs: number;
   msSinceLastTick: number;
   reconnectCount: number;
 }
 
+export interface GoldpriceStatus {
+  active: boolean;
+  pollingIntervalMs: number;
+}
+
 export interface ApiStatus {
-  twelvedata: TwelveDataStatus;
+  twelvedata: SourceStatus;
+  finnhub: SourceStatus;
+  goldprice: GoldpriceStatus;
   activeSource: string | null;
   serverTime: number;
 }
@@ -20,8 +28,7 @@ export interface ApiStatusState {
   alerting: boolean;
 }
 
-const POLL_INTERVAL_MS = 10_000;
-const STALE_TICK_THRESHOLD_MS = 60_000;
+const POLL_INTERVAL_MS = 8_000;
 
 export function useApiStatus(): ApiStatusState {
   const [state, setState] = useState<ApiStatusState>({
@@ -41,16 +48,12 @@ export function useApiStatus(): ApiStatusState {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: ApiStatus = await res.json();
 
-        const tdOk =
-          data.twelvedata.connected &&
-          (data.twelvedata.msSinceLastTick < STALE_TICK_THRESHOLD_MS ||
-            data.twelvedata.msSinceLastTick === -1);
-
-        const alerting = !tdOk;
+        const hasRealtime = data.twelvedata.connected || data.finnhub.connected;
+        const alerting = !hasRealtime;
 
         if (!cancelled) {
-          prevOkRef.current = tdOk;
-          setState({ status: data, ok: tdOk, lastChecked: Date.now(), alerting });
+          prevOkRef.current = hasRealtime;
+          setState({ status: data, ok: hasRealtime, lastChecked: Date.now(), alerting });
         }
       } catch {
         if (!cancelled) {

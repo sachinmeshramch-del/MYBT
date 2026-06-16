@@ -20,10 +20,22 @@ let reconnectDelay = RECONNECT_DELAY_BASE;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let finnhubConnected = false;
 let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+let _finnhubReconnectCount = 0;
+let _lastFinnhubApiKeySet = !!process.env["FINNHUB_API_KEY"];
 
 // Track last Finnhub tick time so fallback only fires during quiet gaps
 let lastFinnhubTickMs = 0;
 const FALLBACK_GAP_MS = 2000; // fire fallback if no Finnhub tick for 2s
+
+export function getFinnhubStatus() {
+  return {
+    connected: finnhubConnected,
+    hasApiKey: !!process.env["FINNHUB_API_KEY"],
+    lastTickMs: lastFinnhubTickMs,
+    msSinceLastTick: lastFinnhubTickMs > 0 ? Date.now() - lastFinnhubTickMs : -1,
+    reconnectCount: _finnhubReconnectCount,
+  };
+}
 
 // ── Goldprice.org gap-filler polling ──────────────────────────────────────
 // Always runs at 2s intervals; skips if Finnhub sent a tick recently
@@ -152,6 +164,7 @@ function connect() {
 
   ws.on("close", (code, reason) => {
     finnhubConnected = false;
+    _finnhubReconnectCount++;
     logger.warn({ code, reason: reason.toString() }, "Finnhub disconnected — will reconnect");
     startFallbackPolling();
     scheduleReconnect();

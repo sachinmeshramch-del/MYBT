@@ -1,4 +1,4 @@
-import { Activity, TrendingUp, TrendingDown, Wifi, WifiOff, AlertTriangle } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, Wifi, WifiOff } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { usePriceStream } from "@/hooks/usePriceStream";
 import { useApiStatus } from "@/hooks/useApiStatus";
@@ -20,9 +20,52 @@ function formatStaleness(ms: number): string {
   return `${Math.floor(ms / 60000)}m ago`;
 }
 
+interface SourceRowProps {
+  label: string;
+  connected: boolean;
+  hasKey: boolean;
+  msSinceLastTick?: number;
+  isActive?: boolean;
+}
+
+function SourceRow({ label, connected, hasKey, msSinceLastTick, isActive }: SourceRowProps) {
+  let dotColor = "#ef4444";
+  let stateText = "NO API KEY";
+  let stateColor = "#ef4444";
+
+  if (!hasKey) {
+    dotColor = "#ef4444";
+    stateText = "NO API KEY";
+    stateColor = "#ef4444";
+  } else if (connected) {
+    dotColor = "#22c55e";
+    stateText = isActive ? "LIVE ★" : "CONNECTED";
+    stateColor = "#22c55e";
+  } else {
+    dotColor = "#f59e0b";
+    stateText = "CONNECTING…";
+    stateColor = "#f59e0b";
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+        <span className="text-[10px] font-mono text-muted-foreground">{label}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {msSinceLastTick !== undefined && connected && (
+          <span className="text-[9px] font-mono text-muted-foreground/50">{formatStaleness(msSinceLastTick)}</span>
+        )}
+        <span className="text-[10px] font-mono font-bold" style={{ color: stateColor }}>{stateText}</span>
+      </div>
+    </div>
+  );
+}
+
 export function Header() {
   const { data, connected, error, transport } = usePriceStream();
-  const { status, ok, alerting } = useApiStatus();
+  const { status, alerting } = useApiStatus();
   const [flashClass, setFlashClass] = useState("");
   const prevPriceRef = useRef<number | null>(null);
   const [blinkOn, setBlinkOn] = useState(true);
@@ -51,7 +94,20 @@ export function Header() {
   }, [data?.price, data?.direction]);
 
   const isUp = (data?.change ?? 0) >= 0;
+
   const td = status?.twelvedata;
+  const fh = status?.finnhub;
+  const gp = status?.goldprice;
+  const activeSource = status?.activeSource ?? data?.source ?? null;
+
+  const hasPremium = td?.connected || fh?.connected;
+
+  let sourceBadgeColor = "#6b7280";
+  let sourceBadgeLabel = "LIVE";
+  if (data?.source === "twelvedata") { sourceBadgeColor = "#22c55e"; sourceBadgeLabel = "LIVE · TwelveData"; }
+  else if (data?.source === "finnhub") { sourceBadgeColor = "#22c55e"; sourceBadgeLabel = "LIVE · Finnhub"; }
+  else if (data?.source === "goldprice") { sourceBadgeColor = "#f59e0b"; sourceBadgeLabel = "POLLED · 2s"; }
+  else if (data?.source === "yahoo") { sourceBadgeColor = "#6b7280"; sourceBadgeLabel = "DELAYED · Yahoo"; }
 
   return (
     <>
@@ -90,23 +146,9 @@ export function Header() {
                 />
                 <span
                   className="text-[10px] font-mono tracking-widest uppercase"
-                  style={{
-                    color: !connected
-                      ? "#ef4444"
-                      : data?.source === "twelvedata"
-                        ? "#22c55e"
-                        : data?.source === "finnhub"
-                          ? "#eab308"
-                          : "#6b7280",
-                  }}
+                  style={{ color: !connected ? "#ef4444" : sourceBadgeColor }}
                 >
-                  XAUUSD · {!connected
-                    ? (error ? "RECONNECTING..." : "CONNECTING…")
-                    : data?.source === "twelvedata"
-                      ? "LIVE · TwelveData"
-                      : data?.source === "finnhub"
-                        ? "LIVE · Finnhub backup"
-                        : "LIVE"}
+                  XAUUSD · {!connected ? (error ? "RECONNECTING..." : "CONNECTING…") : sourceBadgeLabel}
                 </span>
               </div>
             </div>
@@ -184,7 +226,7 @@ export function Header() {
               </div>
             )}
 
-            {/* ── TwelveData Health Badge ──────────────────────────────── */}
+            {/* ── Data Source Status Badge ─────────────────────────────── */}
             <div
               className="relative shrink-0"
               onMouseEnter={() => setShowTooltip(true)}
@@ -192,72 +234,88 @@ export function Header() {
             >
               <div
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 cursor-default select-none transition-all",
+                  "flex items-center gap-2 px-3 py-2 rounded-xl border cursor-default select-none transition-all",
                   alerting
-                    ? "border-red-500 bg-red-500/15 shadow-lg shadow-red-500/30 pulse-alert"
-                    : ok
-                      ? "border-emerald-500/70 bg-emerald-500/15 shadow-lg shadow-emerald-500/20"
-                      : "border-yellow-500/60 bg-yellow-500/12 shadow-lg shadow-yellow-500/20"
+                    ? "border-amber-500/60 bg-amber-500/10 pulse-alert"
+                    : "border-emerald-500/40 bg-emerald-500/10"
                 )}
               >
-                {alerting ? (
-                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                ) : (
-                  <span
-                    className={cn("w-2.5 h-2.5 rounded-full shrink-0", ok && "animate-pulse")}
-                    style={{ backgroundColor: ok ? "#22c55e" : "#eab308" }}
-                  />
-                )}
+                <span
+                  className={cn("w-2 h-2 rounded-full shrink-0", !alerting && "animate-pulse")}
+                  style={{ backgroundColor: alerting ? "#f59e0b" : "#22c55e" }}
+                />
                 <div className="flex flex-col leading-none">
                   <span className={cn(
-                    "text-[11px] font-black tracking-widest uppercase",
-                    alerting ? "text-red-400" : ok ? "text-emerald-400" : "text-yellow-400"
-                  )}>
-                    TwelveData
-                  </span>
+                    "text-[9px] font-bold tracking-widest uppercase",
+                    alerting ? "text-amber-400/70" : "text-emerald-400/70"
+                  )}>DATA SOURCE</span>
                   <span className={cn(
-                    "text-[13px] font-black tracking-wide font-mono mt-0.5",
-                    alerting ? "text-red-300" : ok ? "text-white" : "text-yellow-300"
+                    "text-[11px] font-black tracking-wide font-mono mt-0.5 uppercase",
+                    alerting ? "text-amber-300" : "text-white"
                   )}>
-                    {alerting ? "⚠ DISCONNECTED" : ok ? "● CONNECTED" : "CHECKING…"}
+                    {hasPremium
+                      ? (td?.connected ? "TwelveData" : "Finnhub")
+                      : activeSource === "goldprice"
+                        ? "Polling 2s"
+                        : activeSource?.toUpperCase() ?? "—"
+                    }
                   </span>
                 </div>
               </div>
 
-              {/* Tooltip */}
+              {/* ── Expanded tooltip with all 3 sources ────────────────── */}
               {showTooltip && (
-                <div className="absolute right-0 top-full mt-2 w-60 rounded-xl border border-white/10 bg-[#111318] shadow-2xl p-4 z-50 text-[11px] font-mono space-y-2.5">
+                <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-white/10 bg-[#111318] shadow-2xl p-4 z-50 space-y-3">
                   <div className="text-muted-foreground/60 uppercase tracking-wider text-[9px] font-bold border-b border-white/8 pb-2">
-                    TwelveData WS Status
+                    Live Data Sources
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Connection</span>
-                    <span className={cn("font-bold", td?.connected ? "text-emerald-400" : "text-red-400")}>
-                      {td?.connected ? "● LIVE" : "✕ DOWN"}
-                    </span>
+
+                  <SourceRow
+                    label="TwelveData WS (primary)"
+                    connected={td?.connected ?? false}
+                    hasKey={td?.hasApiKey ?? false}
+                    msSinceLastTick={td?.msSinceLastTick}
+                    isActive={activeSource === "twelvedata"}
+                  />
+                  <SourceRow
+                    label="Finnhub WS (backup)"
+                    connected={fh?.connected ?? false}
+                    hasKey={fh?.hasApiKey ?? false}
+                    msSinceLastTick={fh?.msSinceLastTick}
+                    isActive={activeSource === "finnhub"}
+                  />
+                  <SourceRow
+                    label="GoldPrice.org (2s poll)"
+                    connected={true}
+                    hasKey={true}
+                    isActive={activeSource === "goldprice"}
+                  />
+
+                  <div className="border-t border-white/8 pt-2.5 space-y-1.5">
+                    <div className="flex justify-between text-[10px] font-mono">
+                      <span className="text-muted-foreground">Browser WS</span>
+                      <span className={connected ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>
+                        {connected ? `● ${transport.toUpperCase()}` : "✕ OFFLINE"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[10px] font-mono">
+                      <span className="text-muted-foreground">OHLC (candles)</span>
+                      <span className="text-amber-400 font-bold">Yahoo Finance</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Last Tick</span>
-                    <span className="text-foreground tabular-nums">
-                      {td ? formatStaleness(td.msSinceLastTick) : "—"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Reconnects</span>
-                    <span className={cn("font-bold", td && td.reconnectCount > 0 ? "text-yellow-400" : "text-emerald-400")}>
-                      {td?.reconnectCount ?? "—"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Active Source</span>
-                    <span className="text-amber-400 uppercase font-bold">{status?.activeSource ?? "—"}</span>
-                  </div>
+
+                  {alerting && (
+                    <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-[10px] font-mono text-amber-300 leading-relaxed">
+                      ⚠ No premium WS key detected.<br />
+                      Add <span className="text-white font-bold">FINNHUB_API_KEY</span> (free) for<br />
+                      sub-second real-time ticks.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
           </div>
-
         </div>
       </header>
     </>
