@@ -4,16 +4,22 @@ import { fetchGoldPrice } from "./goldPrice.js";
 import { logger } from "./logger.js";
 import { getLastTwelveDataTickMs } from "./twelveDataStream.js";
 
-// Finnhub is backup — only dispatches ticks when TwelveData has been silent for 3s
-const TD_STALE_MS = 3_000;
+// TwelveData is ALWAYS primary. Finnhub only fires if TwelveData has been
+// completely silent for TD_STALE_MS. Any TwelveData tick within that window
+// hard-suppresses Finnhub — no exceptions.
+const TD_STALE_MS = 5_000; // raised from 3s → 5s for extra safety margin
 
 const SPREAD = 0.35;
 const FINNHUB_WS_BASE = "wss://ws.finnhub.io";
-// Finnhub free-tier symbol for XAU/USD via OANDA feed
 const GOLD_SYMBOL = "OANDA:XAU_USD";
 
 const RECONNECT_DELAY_BASE = 5_000;
 const RECONNECT_DELAY_MAX  = 120_000;
+
+// Grace period after server start — let TwelveData establish first
+// so Finnhub doesn't race it at boot
+const STARTUP_GRACE_MS = 10_000;
+const _startedAt = Date.now();
 
 let ws: WebSocket | null = null;
 let reconnectDelay = RECONNECT_DELAY_BASE;
@@ -21,11 +27,10 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let finnhubConnected = false;
 let fallbackTimer: ReturnType<typeof setInterval> | null = null;
 let _finnhubReconnectCount = 0;
-let _lastFinnhubApiKeySet = !!process.env["FINNHUB_API_KEY"];
 
-// Track last Finnhub tick time so fallback only fires during quiet gaps
+// Track last Finnhub tick time for status reporting only
 let lastFinnhubTickMs = 0;
-const FALLBACK_GAP_MS = 2000; // fire fallback if no Finnhub tick for 2s
+const FALLBACK_GAP_MS = 2000;
 
 export function getFinnhubStatus() {
   return {
@@ -38,15 +43,16 @@ export function getFinnhubStatus() {
 }
 
 // ── Goldprice.org gap-filler polling ──────────────────────────────────────
-// Always runs at 2s intervals; skips if Finnhub sent a tick recently
+// Fires at 2s; skips if TwelveData or Finnhub sent a recent tick
 function startFallbackPolling() {
   if (fallbackTimer) return;
   logger.info("Starting goldprice.org gap-filler polling (2s)");
   fallbackTimer = setInterval(async () => {
-    const gap = Date.now() - lastFinnhubTickMs;
-    // Skip if TwelveData is active (primary), or if Finnhub itself is active
-    if (Date.now() - getLastTwelveDataTickMs() <= TD_STALE_MS) return;
-    if (finnhubConnected && gap < FALLBACK_GAP_MS) return; // Finnhub is active
+    const tdSilentMs = Date.now() - getLastTwelveDataTickMs();
+    const fhSilentMs = Date.now() - lastFinnhubTickMs;
+    // Skip if either premium source is active
+    if (tdSilentMs <= TD_STALE_MS) return;
+    if (finnhubConnected && fhSilentMs < FALLBACK_GAP_MS) return;
     try {
       const raw = await fetchGoldPrice();
       const live = buildLivePrice(raw, SPREAD, "goldprice");
@@ -55,11 +61,6 @@ function startFallbackPolling() {
       // ignore
     }
   }, 2000);
-}
-
-function stopFallbackPolling() {
-  // No-op: fallback now runs permanently as a gap-filler
-  logger.info("Finnhub is live — fallback now acting as gap-filler (2s)");
 }
 
 // ── Finnhub message handler ────────────────────────────────────────────────
@@ -71,30 +72,40 @@ function handleMessage(raw: string) {
   const ev = msg as Record<string, unknown>;
   const type = ev["type"] as string;
 
-  // Trade tick — this is the real-time price
   if (type === "trade") {
     const ticks = ev["data"] as Array<Record<string, unknown>> | undefined;
     if (!Array.isArray(ticks) || ticks.length === 0) return;
 
-    // Use the latest tick in the batch
     const tick = ticks[ticks.length - 1];
     const price = tick["p"] as number | undefined;
     const t     = tick["t"] as number | undefined;
     if (!price) return;
 
+    // Record tick time for status reporting (always, even if suppressed)
+    lastFinnhubTickMs = Date.now();
+
+    // ── Hard suppression: TwelveData takes absolute priority ──────────────
+    const tdLastTick = getLastTwelveDataTickMs();
+    const tdSilentMs = Date.now() - tdLastTick;
+    const inStartupGrace = (Date.now() - _startedAt) < STARTUP_GRACE_MS;
+
+    // Suppress if: TwelveData has ticked at all AND is within stale window
+    // Also suppress during startup grace period so TD can establish first
+    if (inStartupGrace || (tdLastTick > 0 && tdSilentMs <= TD_STALE_MS)) {
+      logger.debug(
+        { tdSilentMs, threshold: TD_STALE_MS, inStartupGrace },
+        "[Finnhub] Suppressed — TwelveData is primary source"
+      );
+      return;
+    }
+
     const bid = +(price - SPREAD / 2).toFixed(2);
     const ask = +(price + SPREAD / 2).toFixed(2);
-    const spread = +(ask - bid).toFixed(2);
-    const tdSilentMs = Date.now() - getLastTwelveDataTickMs();
-    const twelvDataActive = tdSilentMs <= TD_STALE_MS;
 
     logger.info(
-      { "[Finnhub] Price": +price.toFixed(2), Time: Date.now(), bid, ask, spread, tdSilentMs },
-      "[Finnhub] Price received"
+      { "[Finnhub→ACTIVE] Price": +price.toFixed(2), tdSilentMs },
+      "[Finnhub] Taking over — TwelveData silent"
     );
-    if (spread > 1.0) {
-      logger.warn({ spread }, "[Finnhub] WARNING: Spread too wide, likely Asian session");
-    }
 
     const live: LivePrice = {
       price:         +price.toFixed(2),
@@ -110,18 +121,7 @@ function handleMessage(raw: string) {
       ms:            t ?? Date.now(),
       source:        "finnhub",
     };
-    lastFinnhubTickMs = Date.now();
 
-    // Only dispatch if TwelveData has been silent for more than 3 seconds
-    if (twelvDataActive) {
-      logger.info(
-        { tdSilentMs, threshold: TD_STALE_MS },
-        "[Finnhub] Suppressed — TwelveData still active (both sources received tick)"
-      );
-      return;
-    }
-
-    logger.info({ "[Active Source]": "FINNHUB", price: +price.toFixed(2) }, "[Active Source] Using: FINNHUB");
     setLatestPrice(live);
     return;
   }
@@ -142,16 +142,15 @@ function connect() {
   }
 
   const url = `${FINNHUB_WS_BASE}?token=${apiKey}`;
-  logger.info("Connecting to Finnhub WebSocket for real-time XAU/USD ticks…");
+  logger.info("Connecting to Finnhub WebSocket (backup — TwelveData is primary)…");
 
   ws = new WebSocket(url);
 
   ws.on("open", () => {
-    logger.info("Finnhub WebSocket connected — subscribing to XAUUSD");
+    logger.info("Finnhub WebSocket connected — subscribed to OANDA:XAU_USD (backup mode)");
     ws?.send(JSON.stringify({ type: "subscribe", symbol: GOLD_SYMBOL }));
     finnhubConnected = true;
     reconnectDelay = RECONNECT_DELAY_BASE;
-    stopFallbackPolling();
   });
 
   ws.on("message", (data: WebSocket.RawData) => {
