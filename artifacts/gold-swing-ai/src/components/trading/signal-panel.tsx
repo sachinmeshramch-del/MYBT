@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import {
   AlertCircle, Target, ShieldX, ArrowRightCircle,
   TrendingUp, TrendingDown, Minus, Zap,
-  Globe, FlameKindling, Sparkles, Activity, Timer, MoonStar,
+  Globe, FlameKindling, Sparkles, Activity, Timer, MoonStar, Crosshair,
 } from "lucide-react";
 import { CooldownTimer } from "./cooldown-timer";
 import { motion } from "framer-motion";
@@ -116,6 +116,7 @@ export function SignalPanel() {
     signal, confidence, entryPrice, stopLoss, takeProfit,
     trend, reason, timestamp, tradeDuration, cooldownRemaining,
     signalStrength, spikeCooldownCandles,
+    threshold, thresholdReason,
     emaScore, rsiScore, macdScore, momentumScore, fvgScore, sweepScore,
     indicators,
   } = signalData;
@@ -209,6 +210,27 @@ export function SignalPanel() {
             <p className="text-[10px] text-slate-400 text-right">EMA9/21 · RSI · MACD · 1m confirm</p>
           </div>
         </div>
+
+        {/* ── Zone / Threshold Status ───────────────────────────────────────── */}
+        {threshold !== undefined && (
+          <div className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border text-xs font-medium ${
+            threshold <= 40
+              ? "bg-violet-500/10 border-violet-500/25 text-violet-300"
+              : threshold <= 45
+              ? "bg-amber-500/10 border-amber-500/25 text-amber-300"
+              : "bg-zinc-500/10 border-zinc-500/25 text-zinc-400"
+          }`}>
+            <Crosshair className={`w-3.5 h-3.5 flex-shrink-0 ${
+              threshold <= 40 ? "text-violet-400" : threshold <= 45 ? "text-amber-400" : "text-zinc-500"
+            }`} />
+            <div className="flex-1 min-w-0">
+              <span className="font-semibold">
+                {threshold <= 40 ? "Order Block Zone" : threshold <= 45 ? "S/R Zone" : "No Key Zone"}&nbsp;·&nbsp;
+              </span>
+              <span className="opacity-80">Threshold: {threshold}% &nbsp;({thresholdReason})</span>
+            </div>
+          </div>
+        )}
 
         {/* ── Score Breakdown ───────────────────────────────────────────────── */}
         <div className="rounded-2xl border border-white/8 bg-black/25 p-4 flex flex-col gap-2.5">

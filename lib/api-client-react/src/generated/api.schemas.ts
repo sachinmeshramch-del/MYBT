@@ -134,6 +134,12 @@ export interface SignalResponse {
   smartMode: boolean;
   /** Signal strength classification */
   signalStrength: SignalResponseSignalStrength;
+  /** Candles remaining in post-spike cooldown (0 = clear) */
+  spikeCooldownCandles: number;
+  /** Effective confidence threshold (40 at OB, 45 at S/R, 55 default) */
+  threshold: number;
+  /** Why the threshold was set to this value (zone info) */
+  thresholdReason: string;
   /** EMA crossover score 0-35 */
   emaScore: number;
   /** RSI score 0-25 */

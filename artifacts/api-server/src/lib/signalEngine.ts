@@ -34,6 +34,9 @@ export interface SignalResult {
   session:           SessionInfo;
   signalStrength:    "STRONG" | "NORMAL" | null;
   spikeCooldownCandles: number; // candles remaining in post-spike cooldown (0 = clear)
+  // Dynamic threshold (S/R and Order Block zone detection)
+  threshold:       number;  // Effective threshold (40, 45, or 55)
+  thresholdReason: string;  // Why the threshold was set to this value
   // Score breakdown (raw values, normalized to 100 for confidence)
   emaScore:      number;  // 0-35
   rsiScore:      number;  // 0-25
@@ -94,10 +97,115 @@ const CANDLE_5M_MS         = 300_000; // 5 min in ms
 // ── Scalping constants ────────────────────────────────────────────────────
 const SIGNAL_CACHE_TTL   = 60_000;   // 1 minute
 const COOLDOWN_MS        = 900_000;  // 15 minutes between signals
-const MIN_CONF_NORMAL    = 55;
+const MIN_CONF_NORMAL    = 55;       // Default confidence threshold
 const MIN_CONF_STRONG    = 75;
 const MIN_PRICE_MOVE_PCT = 0.001;    // 0.1% to override cooldown
 const MAX_RAW_SCORE      = 155;      // 35+25+25+15+25+30
+
+// ── S/R Zone Detection (simple swing highs/lows) ─────────────────────────
+interface SRZones {
+  swingHighs: number[];
+  swingLows:  number[];
+}
+
+function detectSRZones(candles: OHLCCandle[]): SRZones {
+  const swingHighs: number[] = [];
+  const swingLows:  number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    if (candles[i]!.high > candles[i - 1]!.high) swingHighs.push(candles[i]!.high);
+    if (candles[i]!.low  < candles[i - 1]!.low)  swingLows.push(candles[i]!.low);
+  }
+  return { swingHighs, swingLows };
+}
+
+// ── Simple Order Block Detection (from prompt spec) ───────────────────────
+interface SimpleOrderBlock {
+  type:  "BULLISH" | "BEARISH";
+  level: number;
+}
+
+function detectSimpleOrderBlocks(candles: OHLCCandle[]): SimpleOrderBlock[] {
+  const blocks: SimpleOrderBlock[] = [];
+  for (let i = 2; i < candles.length; i++) {
+    if (
+      candles[i - 2]!.high > candles[i - 1]!.high &&
+      candles[i - 1]!.high > candles[i]!.high
+    ) {
+      blocks.push({ type: "BULLISH", level: candles[i - 2]!.high });
+    }
+    if (
+      candles[i - 2]!.low < candles[i - 1]!.low &&
+      candles[i - 1]!.low < candles[i]!.low
+    ) {
+      blocks.push({ type: "BEARISH", level: candles[i - 2]!.low });
+    }
+  }
+  return blocks;
+}
+
+// ── Dynamic Threshold Based on Location ──────────────────────────────────
+// KEY CHANGE: Instead of adding score bonuses, REDUCE the threshold
+// when price is at high-probability S/R or OB zones.
+const SR_ZONE_PROXIMITY  = 2;  // Gold points — price must be within this of zone
+const OB_ZONE_PROXIMITY  = 2;  // Gold points — price must be within this of OB level
+const THRESHOLD_DEFAULT  = 55; // Default — not at any notable zone
+const THRESHOLD_SR_ZONE  = 45; // Reduced at support or resistance zone
+const THRESHOLD_OB_ZONE  = 40; // Most reduced — at order block (highest probability)
+
+interface ThresholdResult {
+  threshold: number;
+  reason:    string;
+}
+
+function determineThreshold(
+  price:   number,
+  srZones: SRZones,
+  obZones: SimpleOrderBlock[],
+  baseConf: number,
+): ThresholdResult {
+  // Order blocks have highest priority (checked first)
+  for (const block of obZones.slice(-20)) { // check last 20 OBs
+    if (Math.abs(price - block.level) < OB_ZONE_PROXIMITY) {
+      return {
+        threshold: THRESHOLD_OB_ZONE,
+        reason:    `${block.type} OB zone (need ${THRESHOLD_OB_ZONE}%, have ${baseConf}%)`,
+      };
+    }
+  }
+
+  // Support zone
+  if (srZones.swingLows.length > 0) {
+    const nearestSupport = Math.min(...srZones.swingLows);
+    if (
+      price > nearestSupport - SR_ZONE_PROXIMITY &&
+      price < nearestSupport + SR_ZONE_PROXIMITY
+    ) {
+      return {
+        threshold: THRESHOLD_SR_ZONE,
+        reason:    `Support zone @ ${nearestSupport.toFixed(2)} (need ${THRESHOLD_SR_ZONE}%, have ${baseConf}%)`,
+      };
+    }
+  }
+
+  // Resistance zone
+  if (srZones.swingHighs.length > 0) {
+    const nearestResistance = Math.max(...srZones.swingHighs);
+    if (
+      price > nearestResistance - SR_ZONE_PROXIMITY &&
+      price < nearestResistance + SR_ZONE_PROXIMITY
+    ) {
+      return {
+        threshold: THRESHOLD_SR_ZONE,
+        reason:    `Resistance zone @ ${nearestResistance.toFixed(2)} (need ${THRESHOLD_SR_ZONE}%, have ${baseConf}%)`,
+      };
+    }
+  }
+
+  return {
+    threshold: THRESHOLD_DEFAULT,
+    reason:    `Default (need ${THRESHOLD_DEFAULT}%, have ${baseConf}%)`,
+  };
+}
 
 // ── Session detection ─────────────────────────────────────────────────────
 function getCurrentSession(): SessionInfo {
@@ -210,6 +318,8 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
       session,
       signalStrength:       null,
       spikeCooldownCandles: 0,
+      threshold:            THRESHOLD_DEFAULT,
+      thresholdReason:      `Default (need ${THRESHOLD_DEFAULT}%, have 0%)`,
       emaScore:      0,
       rsiScore:      0,
       macdScore:     0,
@@ -243,6 +353,7 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
       trend: "NEUTRAL" as const, tradeDuration: "5-30 minutes",
       signalStrength: null, emaScore: 0, rsiScore: 0, macdScore: 0,
       momentumScore: 0, fvgScore: 0, sweepScore: 0,
+      threshold: THRESHOLD_DEFAULT, thresholdReason: `Default (need ${THRESHOLD_DEFAULT}%, have 0%)`,
       indicators: { rsi: 50, ema9: currentPrice, ema21: currentPrice, macdLine: 0, macdSignal: 0, macdHistogram: 0, atr: 3, trend5m: "NEUTRAL" as const, trend1m: "NEUTRAL" as const },
     };
     return {
@@ -262,7 +373,7 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
   }
 
   const analytics = await getAnalyticsSummary();
-  const minConf = smartMode && analytics.sufficientData ? MIN_CONF_NORMAL + 5 : MIN_CONF_NORMAL;
+  const smartBoost = smartMode && analytics.sufficientData ? 5 : 0;
 
   try {
     // ── Fetch 5m (primary) and 1m (entry refinement) ─────────────────────
@@ -386,6 +497,10 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     // ── Liquidity Sweep Detection (closed 5m candles only) ───────────────
     const sweepDir  = detectLiquiditySweep(closedCandles5m);
 
+    // ── S/R Zone + Order Block Detection (for dynamic threshold) ─────────
+    const srZones  = detectSRZones(closedCandles5m);
+    const obZones  = detectSimpleOrderBlocks(closedCandles5m);
+
     // ── Scoring Engine ────────────────────────────────────────────────────
     // LONG scores
     let longEmaScore  = 0;
@@ -443,12 +558,19 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     const longNorm  = Math.round((longRaw  / MAX_RAW_SCORE) * 100);
     const shortNorm = Math.round((shortRaw / MAX_RAW_SCORE) * 100);
 
+    // ── Dynamic Threshold (S/R + Order Block zone reduction) ─────────────
+    const bestNorm = Math.max(longNorm, shortNorm);
+    const { threshold: dynamicThreshold, reason: thresholdReason } =
+      determineThreshold(currentPrice, srZones, obZones, bestNorm);
+    // SmartMode raises the threshold by 5 on top of whatever zone gives us
+    const effectiveThreshold = dynamicThreshold + smartBoost;
+
     // ── Determine direction ───────────────────────────────────────────────
     let direction: "LONG" | "SHORT" | "HOLD" = "HOLD";
 
-    if (longNorm >= shortNorm && longNorm >= minConf) {
+    if (longNorm >= shortNorm && longNorm >= effectiveThreshold) {
       direction = "LONG";
-    } else if (shortNorm > longNorm && shortNorm >= minConf) {
+    } else if (shortNorm > longNorm && shortNorm >= effectiveThreshold) {
       direction = "SHORT";
     }
 
@@ -526,7 +648,7 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     } else {
       const bestDir  = longNorm >= shortNorm ? "LONG" : "SHORT";
       const bestConf = Math.max(longNorm, shortNorm);
-      reason = `HOLD – Waiting for confluence ${sessionNote} · Best: ${bestDir} ${bestConf}% (need ${minConf}%)`;
+      reason = `HOLD – Waiting for confluence ${sessionNote} · Current: ${bestConf}% (need ${effectiveThreshold}% — ${thresholdReason})`;
     }
 
     if (finalSignal !== "HOLD") {
@@ -549,6 +671,8 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
       session,
       signalStrength,
       spikeCooldownCandles,
+      threshold:         effectiveThreshold,
+      thresholdReason,
       emaScore,
       rsiScore,
       macdScore,
@@ -590,6 +714,8 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
       session,
       signalStrength:    null,
       spikeCooldownCandles: 0,
+      threshold:         THRESHOLD_DEFAULT,
+      thresholdReason:   `Default (need ${THRESHOLD_DEFAULT}%, have 0%)`,
       emaScore:      0,
       rsiScore:      0,
       macdScore:     0,

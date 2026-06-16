@@ -263,6 +263,12 @@ components:
         spikeCooldownCandles:
           type: number
           description: Candles remaining in post-spike cooldown (0 = clear)
+        threshold:
+          type: number
+          description: Effective confidence threshold (40 at OB, 45 at S/R, 55 default)
+        thresholdReason:
+          type: string
+          description: Why the threshold was set to this value (zone info)
         emaScore:
           type: number
           description: EMA crossover score 0-35
@@ -299,6 +305,8 @@ components:
         - smartMode
         - signalStrength
         - spikeCooldownCandles
+        - threshold
+        - thresholdReason
         - emaScore
         - rsiScore
         - macdScore
