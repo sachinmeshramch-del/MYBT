@@ -4,6 +4,7 @@ import { SignalPanel } from "@/components/trading/signal-panel";
 import { IndicatorsRow } from "@/components/trading/indicators-row";
 import { HistoryTable } from "@/components/trading/history-table";
 import { AnalyticsPanel } from "@/components/trading/analytics-panel";
+import { NewsPanel } from "@/components/trading/news-panel";
 import { motion } from "framer-motion";
 
 export default function Dashboard() {
@@ -43,6 +44,14 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <NewsPanel />
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.25 }}
           >
             <HistoryTable />
           </motion.div>

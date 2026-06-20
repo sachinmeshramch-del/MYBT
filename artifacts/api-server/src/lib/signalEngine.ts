@@ -7,6 +7,7 @@ import {
   detectTrend,
 } from "./technicalIndicators.js";
 import { getAnalyticsSummary, isSmartMode } from "./performanceAnalytics.js";
+import { getNewsAnalysis } from "./newsAnalyzer.js";
 import { logger } from "./logger.js";
 import { db, signalsTable } from "@workspace/db";
 import { desc } from "drizzle-orm";
@@ -560,17 +561,44 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
 
     // ── Dynamic Threshold (S/R + Order Block zone reduction) ─────────────
     const bestNorm = Math.max(longNorm, shortNorm);
-    const { threshold: dynamicThreshold, reason: thresholdReason } =
+    const { threshold: dynamicThreshold, reason: zoneReason } =
       determineThreshold(currentPrice, srZones, obZones, bestNorm);
     // SmartMode raises the threshold by 5 on top of whatever zone gives us
-    const effectiveThreshold = dynamicThreshold + smartBoost;
+    const baseEffThreshold = dynamicThreshold + smartBoost;
+
+    // ── News / Fundamental Analysis ───────────────────────────────────────
+    const news = getNewsAnalysis();
+    const newsAdj = news.thresholdAdjustment;
+    // News independently lowers threshold for the aligned direction.
+    // Take min (most permissive) of zone threshold and news threshold.
+    const longThreshold  = Math.min(baseEffThreshold, newsAdj.long  + smartBoost);
+    const shortThreshold = Math.min(baseEffThreshold, newsAdj.short + smartBoost);
+    // For HOLD display: use minimum of the two directional thresholds
+    const effectiveThreshold = Math.min(longThreshold, shortThreshold);
+    // Annotate threshold reason with news context if news had an effect
+    const newsAffected = longThreshold < baseEffThreshold || shortThreshold < baseEffThreshold || newsAdj.blockLong || newsAdj.blockShort;
+    const thresholdReason = newsAffected
+      ? `${zoneReason} · ${news.label} (${news.bias >= 0 ? "+" : ""}${news.bias})`
+      : zoneReason;
+
+    // Log news analysis factors
+    logger.info(
+      { bias: news.bias, label: news.label, action: news.action, longThr: longThreshold, shortThr: shortThreshold, blockLong: newsAdj.blockLong, blockShort: newsAdj.blockShort },
+      `[NEWS BIAS] Overall Bias: ${news.bias >= 0 ? "+" : ""}${news.bias} (${news.label}) — ${news.action}`
+    );
+    for (const f of news.factors) {
+      logger.info(
+        { score: `${f.score >= 0 ? "+" : ""}${f.score}`, weight: `${Math.round(f.weight * 100)}%`, state: f.label },
+        `[${f.key.toUpperCase()}] ${f.score >= 0 ? "+" : ""}${f.score} → ${f.label}`
+      );
+    }
 
     // ── Determine direction ───────────────────────────────────────────────
     let direction: "LONG" | "SHORT" | "HOLD" = "HOLD";
 
-    if (longNorm >= shortNorm && longNorm >= effectiveThreshold) {
+    if (!newsAdj.blockLong && longNorm >= shortNorm && longNorm >= longThreshold) {
       direction = "LONG";
-    } else if (shortNorm > longNorm && shortNorm >= effectiveThreshold) {
+    } else if (!newsAdj.blockShort && shortNorm > longNorm && shortNorm >= shortThreshold) {
       direction = "SHORT";
     }
 
@@ -608,6 +636,15 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     if (finalSignal !== "HOLD" && inSpikeCooldown) {
       finalSignal = "HOLD";
     }
+    // Log final signal fire decision with news context
+    if (finalSignal !== "HOLD") {
+      const usedThr = finalSignal === "LONG" ? longThreshold : shortThreshold;
+      logger.info(
+        { signal: finalSignal, confidence, threshold: usedThr, newsBias: news.bias, newsLabel: news.label },
+        `[SIGNAL] Tech: ${confidence}% > Threshold: ${usedThr}% = FIRE ✅ | News: ${news.label} (${news.bias >= 0 ? "+" : ""}${news.bias})`
+      );
+    }
+
     // ── SL / TP (ATR × 3.0 for SL, R:R 1:2.5 for TP) ────────────────────
     const slDist = +(atr * 3.0).toFixed(2);
     const tpDist = +(slDist * 2.5).toFixed(2);
@@ -677,7 +714,7 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
       session,
       signalStrength,
       spikeCooldownCandles,
-      threshold:         effectiveThreshold,
+      threshold:         finalSignal === "LONG" ? longThreshold : finalSignal === "SHORT" ? shortThreshold : effectiveThreshold,
       thresholdReason,
       emaScore,
       rsiScore,

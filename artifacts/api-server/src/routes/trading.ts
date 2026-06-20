@@ -3,6 +3,7 @@ import { fetchGoldPrice } from "../lib/goldPrice.js";
 import { generateSignal, initSignalCooldown, isSignalPersisted, markSignalPersisted } from "../lib/signalEngine.js";
 import { startTradeTracker } from "../lib/tradeTracker.js";
 import { getAnalyticsSummary, setSmartMode } from "../lib/performanceAnalytics.js";
+import { getNewsAnalysis, refreshNewsAnalysis } from "../lib/newsAnalyzer.js";
 import { priceEmitter, getLatestPrice, type LivePrice } from "../lib/priceEvents.js";
 import { broadcastToWebSocketClients } from "../lib/priceWebSocket.js";
 import { db, signalsTable } from "@workspace/db";
@@ -172,6 +173,25 @@ router.delete("/history/:id", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Error deleting signal");
     res.status(500).json({ error: "delete_error", message: "Failed to delete signal" });
+  }
+});
+
+// ── News / Fundamental Analysis endpoints ──────────────────────────────────
+router.get("/news", (req, res) => {
+  try {
+    res.json(getNewsAnalysis());
+  } catch (err) {
+    req.log.error({ err }, "Error fetching news analysis");
+    res.status(500).json({ error: "news_error", message: "Failed to fetch news analysis" });
+  }
+});
+
+router.post("/news/refresh", (req, res) => {
+  try {
+    res.json(refreshNewsAnalysis());
+  } catch (err) {
+    req.log.error({ err }, "Error refreshing news analysis");
+    res.status(500).json({ error: "news_refresh_error", message: "Failed to refresh news analysis" });
   }
 });
 
