@@ -4,6 +4,7 @@ import { generateSignal, initSignalCooldown, isSignalPersisted, markSignalPersis
 import { startTradeTracker } from "../lib/tradeTracker.js";
 import { getAnalyticsSummary, setSmartMode } from "../lib/performanceAnalytics.js";
 import { getNewsAnalysis, refreshNewsAnalysis } from "../lib/newsAnalyzer.js";
+import { generateAISignal } from "../lib/aiSignalGenerator.js";
 import { priceEmitter, getLatestPrice, type LivePrice } from "../lib/priceEvents.js";
 import { broadcastToWebSocketClients } from "../lib/priceWebSocket.js";
 import { db, signalsTable } from "@workspace/db";
@@ -192,6 +193,27 @@ router.post("/news/refresh", (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Error refreshing news analysis");
     res.status(500).json({ error: "news_refresh_error", message: "Failed to refresh news analysis" });
+  }
+});
+
+// ── AI Signal endpoints ────────────────────────────────────────────────────
+router.get("/ai-signal", async (req, res) => {
+  try {
+    const signal = await generateAISignal();
+    res.json(signal);
+  } catch (err) {
+    req.log.error({ err }, "Error generating AI signal");
+    res.status(500).json({ error: "ai_signal_error", message: "Failed to generate AI signal" });
+  }
+});
+
+router.post("/ai-signal/generate", async (req, res) => {
+  try {
+    const signal = await generateAISignal(true);
+    res.json(signal);
+  } catch (err) {
+    req.log.error({ err }, "Error force-generating AI signal");
+    res.status(500).json({ error: "ai_signal_error", message: "Failed to generate AI signal" });
   }
 });
 
