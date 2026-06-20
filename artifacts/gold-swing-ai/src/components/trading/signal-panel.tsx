@@ -345,7 +345,7 @@ export function SignalPanel() {
           <div className="flex items-center justify-between text-xs text-slate-300 pt-1 border-t border-white/5">
             <div className="flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5" />
-              <span>Updated {format(new Date(timestamp), "HH:mm:ss")}</span>
+              <span>Updated {timestamp && !isNaN(new Date(timestamp).getTime()) ? format(new Date(timestamp), "HH:mm:ss") : "--:--:--"}</span>
             </div>
             <Badge variant="outline" className="text-[10px] border-white/20 text-slate-300 py-0 px-1.5">
               EMA · RSI · MACD
