@@ -307,8 +307,8 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
       signal:               "HOLD",
       confidence:           0,
       entryPrice:           +currentPrice.toFixed(2),
-      stopLoss:             +(currentPrice - 3).toFixed(2),
-      takeProfit:           +(currentPrice + 4.5).toFixed(2),
+      stopLoss:             +(currentPrice - 10.38).toFixed(2),
+      takeProfit:           +(currentPrice + 25.95).toFixed(2),
       trend:                "NEUTRAL",
       reason:               "HOLD – Market closed (weekend) · Opens Sunday 22:00 UTC",
       timestamp:            new Date().toISOString(),
@@ -349,7 +349,7 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     const spikeReason = `HOLD – Spike cooldown (${freshSpikeCooldownCandles} candle${freshSpikeCooldownCandles !== 1 ? "s" : ""} remaining) · Signals blocked until spike settles`;
     const base = cachedSignal ?? {
       confidence: 0, entryPrice: +currentPrice.toFixed(2),
-      stopLoss: +(currentPrice - 3).toFixed(2), takeProfit: +(currentPrice + 4.5).toFixed(2),
+      stopLoss: +(currentPrice - 10.38).toFixed(2), takeProfit: +(currentPrice + 25.95).toFixed(2),
       trend: "NEUTRAL" as const, tradeDuration: "5-30 minutes",
       signalStrength: null, emaScore: 0, rsiScore: 0, macdScore: 0,
       momentumScore: 0, fvgScore: 0, sweepScore: 0,
@@ -608,21 +608,27 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
     if (finalSignal !== "HOLD" && inSpikeCooldown) {
       finalSignal = "HOLD";
     }
-    // ── SL / TP (ATR-based scalping) ──────────────────────────────────────
-    const slDist = Math.min(Math.max(atr * 1.0, 2), 6);
+    // ── SL / TP (ATR × 3.0 for SL, R:R 1:2.5 for TP) ────────────────────
+    const slDist = +(atr * 3.0).toFixed(2);
+    const tpDist = +(slDist * 2.5).toFixed(2);
     let stopLoss:   number;
     let takeProfit: number;
 
     if (finalSignal === "LONG") {
       stopLoss   = +(currentPrice - slDist).toFixed(2);
-      takeProfit = +(currentPrice + slDist * 1.5).toFixed(2);
+      takeProfit = +(currentPrice + tpDist).toFixed(2);
     } else if (finalSignal === "SHORT") {
       stopLoss   = +(currentPrice + slDist).toFixed(2);
-      takeProfit = +(currentPrice - slDist * 1.5).toFixed(2);
+      takeProfit = +(currentPrice - tpDist).toFixed(2);
     } else {
       stopLoss   = +(currentPrice - slDist).toFixed(2);
-      takeProfit = +(currentPrice + slDist * 1.5).toFixed(2);
+      takeProfit = +(currentPrice + tpDist).toFixed(2);
     }
+
+    logger.info(
+      { signal: finalSignal, entry: +currentPrice.toFixed(2), atr: +atr.toFixed(2), slDist, tpDist, stopLoss, takeProfit, rr: "1:2.5" },
+      "[SIGNAL] SL/TP calculated"
+    );
 
     // ── Reason string ─────────────────────────────────────────────────────
     const sessionNote = `[${session.active}]`;
@@ -703,8 +709,8 @@ export async function generateSignal(currentPrice: number): Promise<SignalResult
       signal:     "HOLD",
       confidence: 0,
       entryPrice: +currentPrice.toFixed(2),
-      stopLoss:   +(currentPrice - 3).toFixed(2),
-      takeProfit: +(currentPrice + 4.5).toFixed(2),
+      stopLoss:   +(currentPrice - 10.38).toFixed(2),
+      takeProfit: +(currentPrice + 25.95).toFixed(2),
       trend:      "NEUTRAL",
       reason:     "HOLD – Signal generation failed; using safe defaults",
       timestamp:  new Date().toISOString(),

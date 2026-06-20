@@ -144,7 +144,7 @@ export function SignalPanel() {
     ? stopLoss - entryPrice
     : Math.abs(stopLoss - entryPrice);
 
-  const rrRatio = slDist > 0 ? ((Math.abs(takeProfit - entryPrice)) / slDist).toFixed(2) : "1.50";
+  const rrRatio = slDist > 0 ? ((Math.abs(takeProfit - entryPrice)) / slDist).toFixed(2) : "2.50";
 
   return (
     <Card className="relative overflow-hidden border-white/10 bg-gradient-to-b from-card to-background shadow-2xl">
@@ -271,7 +271,7 @@ export function SignalPanel() {
               <ShieldX className="w-3.5 h-3.5 text-red-400" /> Stop Loss
             </div>
             <span className="text-sm font-bold font-mono tabular-nums text-red-400">{formatPrice(stopLoss)}</span>
-            <span className="text-[10px] text-slate-400 font-mono">{slDist.toFixed(2)} pts</span>
+            <span className="text-[10px] text-slate-400 font-mono">ATR×3.0 · {slDist.toFixed(2)} pts</span>
           </div>
 
           <div className={`border rounded-xl p-3 flex flex-col items-center gap-1 transition-all ${
@@ -283,7 +283,7 @@ export function SignalPanel() {
               <Target className="w-3.5 h-3.5 text-emerald-400" /> Take Profit
             </div>
             <span className="text-sm font-bold font-mono tabular-nums text-emerald-400">{formatPrice(takeProfit)}</span>
-            <span className="text-[10px] text-slate-400 font-mono">R:R {rrRatio}</span>
+            <span className="text-[10px] text-slate-400 font-mono">R:R 1:{rrRatio}</span>
           </div>
         </div>
 
